@@ -40,7 +40,14 @@ The code organization is also minimal 💫:
 
 This will achieve `80%+` validation accuracy on CIFAR-10 from scratch training! 
 
-💯 Here are the [Training/Validation Logs](https://api.wandb.ai/links/action_anticipation/d0hqnv67) 
+Here are the [Training/Validation Logs](https://api.wandb.ai/links/action_anticipation/d0hqnv67) 💯 
+
+`python main.py --lr 1e-3 --bs 128 --embed_dim 128 --depth 6 --n_head 8 --epochs 100 --vanilla_bp True`
+
+Will train the same network but without memory-efficient backpropagation to the same accuracy as above.
+Hence, there is no accuracy drop from the memory-efficient reversible backpropagation.  
+
+Here are the [Training/Validation Logs](https://api.wandb.ai/links/action_anticipation/r7k0v3kd) 💯 
 
 👁️ **Note**: The relatively low accuracy is due to difficulty in training vision transformer (reversible or vanilla) from scratch on small datasets like CIFAR-10. Also likely is that6 a much higher accuracy can be achieved with the same code, using a better [chosen model design and optimization paramaters](https://github.com/tysam-code/hlb-CIFAR10). The authors have done no tuning since this repository is meant for understanding code, not pushing performance. 
 
