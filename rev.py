@@ -362,7 +362,7 @@ class AttentionSubBlock(nn.Module):
         # Note that the complexity of the attention module is not a concern
         # since it is used blackbox as F block in the reversible logic and
         # can be arbitrary.
-        self.attn = MHA(dim, num_heads)
+        self.attn = MHA(dim, num_heads, batch_first = True)
 
     def forward(self, x):
         x = self.norm(x)
