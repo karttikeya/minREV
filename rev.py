@@ -14,13 +14,11 @@ class RevViT(nn.Module):
         embed_dim=768,
         n_head=8,
         depth=8,
-        patch_size=(
-            2,
-            2,
-        ),  # this patch size is used for CIFAR-10
+        patch_size=(2, 2,),  # this patch size is used for CIFAR-10
         # --> (32 // 2)**2 = 256 sequence length
         image_size=(32, 32),  # CIFAR-10 image size
         num_classes=10,
+        enable_amp=False,
     ):
 
         super().__init__()
@@ -39,7 +37,11 @@ class RevViT(nn.Module):
         # is contrained inside the block code and not exposed.
         self.layers = nn.ModuleList(
             [
-                ReversibleBlock(dim=self.embed_dim, num_heads=self.n_head)
+                ReversibleBlock(
+                    dim=self.embed_dim,
+                    num_heads=self.n_head,
+                    enable_amp=enable_amp,
+                )
                 for _ in range(self.depth)
             ]
         )
@@ -96,10 +98,7 @@ class RevViT(nn.Module):
             executing_fn = RevBackProp.apply
 
         # This takes care of switching between vanilla backprop and rev backprop
-        x = executing_fn(
-            x,
-            self.layers,
-        )
+        x = executing_fn(x, self.layers,)
 
         # aggregate across sequence length
         x = x.mean(1)
@@ -125,9 +124,7 @@ class RevBackProp(Function):
 
     @staticmethod
     def forward(
-        ctx,
-        x,
-        layers,
+        ctx, x, layers,
     ):
         """
         Reversible Forward pass.
@@ -167,10 +164,7 @@ class RevBackProp(Function):
             # this is recomputing both the activations and the gradients wrt
             # those activations.
             X_1, X_2, dX_1, dX_2 = layer.backward_pass(
-                Y_1=X_1,
-                Y_2=X_2,
-                dY_1=dX_1,
-                dY_2=dX_2,
+                Y_1=X_1, Y_2=X_2, dY_1=dX_1, dY_2=dX_2,
             )
         # final input gradient to be passed backward to the patchification layer
         dx = torch.cat([dX_1, dX_2], dim=-1)
@@ -186,11 +180,7 @@ class ReversibleBlock(nn.Module):
     See Section 3.3.2 in paper for details.
     """
 
-    def __init__(
-        self,
-        dim,
-        num_heads,
-    ):
+    def __init__(self, dim, num_heads, enable_amp):
         """
         Block is composed entirely of function F (Attention
         sub-block) and G (MLP sub-block) including layernorm.
@@ -198,9 +188,11 @@ class ReversibleBlock(nn.Module):
         super().__init__()
         # F and G can be arbitrary functions, here we use
         # simple attwntion and MLP sub-blocks using vanilla attention.
-        self.F = AttentionSubBlock(dim=dim, num_heads=num_heads)
+        self.F = AttentionSubBlock(
+            dim=dim, num_heads=num_heads, enable_amp=enable_amp
+        )
 
-        self.G = MLPSubblock(dim=dim)
+        self.G = MLPSubblock(dim=dim, enable_amp=enable_amp)
 
         # note that since all functions are deterministic, and we are
         # not using any stochastic elements such as dropout, we do
@@ -234,11 +226,7 @@ class ReversibleBlock(nn.Module):
         return Y_1, Y_2
 
     def backward_pass(
-        self,
-        Y_1,
-        Y_2,
-        dY_1,
-        dY_2,
+        self, Y_1, Y_2, dY_1, dY_2,
     ):
         """
         equation for activation recomputation:
@@ -323,9 +311,7 @@ class MLPSubblock(nn.Module):
     """
 
     def __init__(
-        self,
-        dim,
-        mlp_ratio=4,  # standard for ViTs
+        self, dim, mlp_ratio=4, enable_amp=False,  # standard for ViTs
     ):
 
         super().__init__()
@@ -337,9 +323,18 @@ class MLPSubblock(nn.Module):
             nn.GELU(),
             nn.Linear(dim * mlp_ratio, dim),
         )
+        self.enable_amp = enable_amp
 
     def forward(self, x):
-        return self.mlp(self.norm(x))
+
+        # The reason for implementing autocast inside forward loop instead
+        # in the main training logic is the implicit forward pass during
+        # memory efficient gradient backpropagation. In backward pass, the
+        # activations need to be recomputed, and if the forward has happened
+        # with mixed precision, the recomputation must also be so. This cannot
+        # be handled with the autocast setup in main training logic.
+        with torch.cuda.amp.autocast(enabled=self.enable_amp):
+            return self.mlp(self.norm(x))
 
 
 class AttentionSubBlock(nn.Module):
@@ -349,9 +344,7 @@ class AttentionSubBlock(nn.Module):
     """
 
     def __init__(
-        self,
-        dim,
-        num_heads,
+        self, dim, num_heads, enable_amp=False,
     ):
 
         super().__init__()
@@ -362,12 +355,15 @@ class AttentionSubBlock(nn.Module):
         # Note that the complexity of the attention module is not a concern
         # since it is used blackbox as F block in the reversible logic and
         # can be arbitrary.
-        self.attn = MHA(dim, num_heads, batch_first = True)
+        self.attn = MHA(dim, num_heads, batch_first=True)
+        self.enable_amp = enable_amp
 
     def forward(self, x):
-        x = self.norm(x)
-        out, _ = self.attn(x, x, x)
-        return out
+        # See MLP fwd pass for explanation.
+        with torch.cuda.amp.autocast(enabled=self.enable_amp):
+            x = self.norm(x)
+            out, _ = self.attn(x, x, x)
+            return out
 
 
 def main():

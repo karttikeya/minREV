@@ -7,9 +7,10 @@ import torch.backends.cudnn as cudnn
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from torch.cuda.amp import GradScaler
+
 import torchvision
 import torchvision.transforms as transforms
-
 from rev import RevViT
 
 parser = argparse.ArgumentParser(description="PyTorch CIFAR10 Training")
@@ -52,6 +53,12 @@ parser.add_argument(
     default=False,
     type=bool,
     help="whether to use reversible backpropagation or not",
+)
+parser.add_argument(
+    "--amp",
+    default=False,
+    type=bool,
+    help="whether to use mixed precision training or not",
 )
 
 args = parser.parse_args()
@@ -102,6 +109,7 @@ model = RevViT(
     patch_size=args.patch_size,
     image_size=args.image_size,
     num_classes=args.num_classes,
+    enable_amp=args.amp,
 )
 
 model = model.to(device)
@@ -113,6 +121,7 @@ model.no_custom_backward = args.vanilla_bp
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=args.lr)
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
+scaler = GradScaler()
 
 # Training
 def train(epoch):
@@ -122,12 +131,19 @@ def train(epoch):
     correct = 0
     total = 0
     for batch_idx, (inputs, targets) in enumerate(trainloader):
+
+        # We do not need to specify AMP autocast in forward pass here since
+        # that is taken care of already in the forward of individual modules.
         inputs, targets = inputs.to(device), targets.to(device)
-        optimizer.zero_grad()
         outputs = model(inputs)
         loss = criterion(outputs, targets)
-        loss.backward()
-        optimizer.step()
+
+        # standard pytorch AMP training setup
+        # scaler also works without amp training.
+        scaler.scale(loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
+        optimizer.zero_grad()
 
         train_loss += loss.item()
         _, predicted = outputs.max(1)
