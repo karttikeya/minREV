@@ -12,6 +12,7 @@ from torch.cuda.amp import GradScaler
 import torchvision
 import torchvision.transforms as transforms
 from rev import RevViT
+from fast_rev import FastRevViT 
 
 parser = argparse.ArgumentParser(description="PyTorch CIFAR10 Training")
 
@@ -53,6 +54,12 @@ parser.add_argument(
     default=False,
     type=bool,
     help="whether to use reversible backpropagation or not",
+)
+parser.add_argument(
+    "--pareprop",
+    default=False,
+    type=bool,
+    help="whether to use fast, parallel reversible backpropagation or not"
 )
 parser.add_argument(
     "--amp",
@@ -102,7 +109,12 @@ testloader = torch.utils.data.DataLoader(
     testset, batch_size=args.bs, shuffle=False, num_workers=2
 )
 
-model = RevViT(
+if args.pareprop:
+    rev_arch = FastRevViT
+else:
+    rev_arch = RevViT
+    
+model = rev_arch(
     embed_dim=args.embed_dim,
     n_head=args.n_head,
     depth=args.depth,
