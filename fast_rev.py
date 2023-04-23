@@ -4,26 +4,13 @@ from torch import nn
 # Needed to implement custom backward pass
 from torch.autograd import Function as Function
 
-# We use the standard pytorch multi-head attention module
-from torch.nn import MultiheadAttention as MHA
-
 # Inherit mostly from base RevViT
 from rev import RevViT, RevBackProp, ReversibleBlock
 
 
-class FastRevViT(nn.Module):
-    def __init__(
-        self,
-        embed_dim=768,
-        n_head=8,
-        depth=8,
-        patch_size=(2, 2,),  # this patch size is used for CIFAR-10
-        # --> (32 // 2)**2 = 256 sequence length
-        image_size=(32, 32),  # CIFAR-10 image size
-        num_classes=10,
-        enable_amp=False,
-    ):
-        super().__init__()
+class FastRevViT(RevViT):
+    def __init__(self, enable_amp=False, **kwargs):
+        super().__init__(**kwargs)
 
         # For Fast parallel revprop
         # Initialize global streams on current device
@@ -57,10 +44,8 @@ class FastRevViT(nn.Module):
         # no need for custom backprop in eval/inference phase
         if not self.training or self.no_custom_backward:
             executing_fn = RevViT.vanilla_backward
-        elif self.pareprop:
-            executing_fn = FastRevBackProp.apply
         else:
-            executing_fn = RevBackProp.apply
+            executing_fn = FastRevBackProp.apply
 
         # This takes care of switching between vanilla backprop and rev backprop
         x = executing_fn(x, self.layers,)
