@@ -13,7 +13,9 @@ The entire Reversible Vision Transformer is implemented from scratch in under **
 
 💥 A gentle and in-depth [15 minute introduction](https://youtu.be/X_xyt26tkRY?t=3350) to RevViT.  
 
-💥 (4/22 Update) We have added in an implementation of fast, parallelized reversible backpropagation (paper coming soon)!
+💥 Additional implementations of reversible MViT and Swin. 
+
+💥 A new implementation of fast, parallelized reversible backpropagation (PaReprop) featured as a spotlight at [Transformers for Vision @ CVPR 2023](https://sites.google.com/view/t4v-cvpr23). 
 
 <h2> Setting Up </h2>
 
@@ -33,7 +35,7 @@ The code organization is also minimal 💫:
 - `rev.py` defines the reversible vision model that supports: 
     -  The vanilla backpropagation 
     -  The memory-efficient reversible backpropagation    
-- `fast_rev.py` contains a fast, parallelized reversible backpropagation (paper coming soon). Use `--pareprop True` to enable. 
+- `fast_rev.py` contains a fast, parallelized reversible backpropagation. Use `--pareprop True` to enable. 
 - `main.py` that has the driver code for training on CIFAR-10.
 
 <h2> Running CIFAR-10 </h2>

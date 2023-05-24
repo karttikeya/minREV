@@ -14,13 +14,15 @@ class RevViT(nn.Module):
         embed_dim=768,
         n_head=8,
         depth=8,
-        patch_size=(2, 2,),  # this patch size is used for CIFAR-10
+        patch_size=(
+            2,
+            2,
+        ),  # this patch size is used for CIFAR-10
         # --> (32 // 2)**2 = 256 sequence length
         image_size=(32, 32),  # CIFAR-10 image size
         num_classes=10,
         enable_amp=False,
     ):
-
         super().__init__()
 
         self.embed_dim = embed_dim
@@ -98,7 +100,10 @@ class RevViT(nn.Module):
             executing_fn = RevBackProp.apply
 
         # This takes care of switching between vanilla backprop and rev backprop
-        x = executing_fn(x, self.layers,)
+        x = executing_fn(
+            x,
+            self.layers,
+        )
 
         # aggregate across sequence length
         x = x.mean(1)
@@ -124,7 +129,9 @@ class RevBackProp(Function):
 
     @staticmethod
     def forward(
-        ctx, x, layers,
+        ctx,
+        x,
+        layers,
     ):
         """
         Reversible Forward pass.
@@ -164,7 +171,10 @@ class RevBackProp(Function):
             # this is recomputing both the activations and the gradients wrt
             # those activations.
             X_1, X_2, dX_1, dX_2 = layer.backward_pass(
-                Y_1=X_1, Y_2=X_2, dY_1=dX_1, dY_2=dX_2,
+                Y_1=X_1,
+                Y_2=X_2,
+                dY_1=dX_1,
+                dY_2=dX_2,
             )
         # final input gradient to be passed backward to the patchification layer
         dx = torch.cat([dX_1, dX_2], dim=-1)
@@ -226,7 +236,11 @@ class ReversibleBlock(nn.Module):
         return Y_1, Y_2
 
     def backward_pass(
-        self, Y_1, Y_2, dY_1, dY_2,
+        self,
+        Y_1,
+        Y_2,
+        dY_1,
+        dY_2,
     ):
         """
         equation for activation recomputation:
@@ -240,7 +254,6 @@ class ReversibleBlock(nn.Module):
         # temporarily record intermediate activation for G
         # and use them for gradient calculcation of G
         with torch.enable_grad():
-
             Y_1.requires_grad = True
 
             # reconstrucating the intermediate activations
@@ -255,7 +268,6 @@ class ReversibleBlock(nn.Module):
         # the computation graph in forward pass. Hence we do not
         # need to record it in the computation graph.
         with torch.no_grad():
-
             # recomputing X_2 from the rev equation
             X_2 = Y_2 - g_Y_1
 
@@ -285,7 +297,6 @@ class ReversibleBlock(nn.Module):
         # propagate reverse computed acitvations at the start of
         # the previou block for backprop.s
         with torch.no_grad():
-
             # recomputing X_1 from the rev equation
             X_1 = Y_1 - f_X_2
 
@@ -311,9 +322,11 @@ class MLPSubblock(nn.Module):
     """
 
     def __init__(
-        self, dim, mlp_ratio=4, enable_amp=False,  # standard for ViTs
+        self,
+        dim,
+        mlp_ratio=4,
+        enable_amp=False,  # standard for ViTs
     ):
-
         super().__init__()
 
         self.norm = nn.LayerNorm(dim)
@@ -326,7 +339,6 @@ class MLPSubblock(nn.Module):
         self.enable_amp = enable_amp
 
     def forward(self, x):
-
         # The reason for implementing autocast inside forward loop instead
         # in the main training logic is the implicit forward pass during
         # memory efficient gradient backpropagation. In backward pass, the
@@ -344,9 +356,11 @@ class AttentionSubBlock(nn.Module):
     """
 
     def __init__(
-        self, dim, num_heads, enable_amp=False,
+        self,
+        dim,
+        num_heads,
+        enable_amp=False,
     ):
-
         super().__init__()
         self.norm = nn.LayerNorm(dim, eps=1e-6, elementwise_affine=True)
 

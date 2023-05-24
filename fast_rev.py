@@ -14,7 +14,7 @@ class FastRevViT(RevViT):
 
         # For Fast parallel revprop
         # Initialize global streams on current device
-        global s1, s2 
+        global s1, s2
         s1 = torch.cuda.Stream(device=torch.cuda.current_device())
         s2 = torch.cuda.Stream(device=torch.cuda.current_device())
 
@@ -29,7 +29,6 @@ class FastRevViT(RevViT):
                 for _ in range(self.depth)
             ]
         )
-
 
     def forward(self, x):
         # patchification using conv and flattening
@@ -48,7 +47,10 @@ class FastRevViT(RevViT):
             executing_fn = FastRevBackProp.apply
 
         # This takes care of switching between vanilla backprop and rev backprop
-        x = executing_fn(x, self.layers,)
+        x = executing_fn(
+            x,
+            self.layers,
+        )
 
         # aggregate across sequence length
         x = x.mean(1)
@@ -62,13 +64,14 @@ class FastRevViT(RevViT):
         # return pre-softmax logits
         return x
 
+
 class FastRevBackProp(RevBackProp):
 
     """
     Fast backpropagation inheriting from standard reversible backpropagation.
-    By parallelizing the backward pass, we can achieve significant speedups 
-    using a minor increase in memory usage. 
-    Simplified version of original.  
+    By parallelizing the backward pass, we can achieve significant speedups
+    using a minor increase in memory usage.
+    Simplified version of original.
     """
 
     @staticmethod
@@ -76,11 +79,11 @@ class FastRevBackProp(RevBackProp):
         """
         Key differences are separating the logic into two functions:
         (1) backward_pass_recover: which recomputes the activations
-        (2) backward_pass_grad: which updates the gradients 
-        We can perform these two steps in parallel if we stagger which 
+        (2) backward_pass_grad: which updates the gradients
+        We can perform these two steps in parallel if we stagger which
         layers they are performed on. Hence, we start with the last layer,
         and then run (2) on the current layer and (1) on the next layer
-        simultaneously. 
+        simultaneously.
         """
         # obtaining gradients dX_1 and dX_2 from the concatenated input
         dX_1, dX_2 = torch.chunk(dx, 2, dim=-1)
@@ -123,9 +126,13 @@ class FastRevBackProp(RevBackProp):
                     events[f"b{i-1}"].synchronize()
 
                 if i % 2 == 0:
-                    dY_1, dY_2 = this_layer.backward_pass_grads(*prev, dX_1, dX_2)
+                    dY_1, dY_2 = this_layer.backward_pass_grads(
+                        *prev, dX_1, dX_2
+                    )
                 else:
-                    dX_1, dX_2 = this_layer.backward_pass_grads(*prev, dY_1, dY_2)
+                    dX_1, dX_2 = this_layer.backward_pass_grads(
+                        *prev, dY_1, dY_2
+                    )
 
                 events[f"b{i}"].record(stream1)
 
@@ -133,7 +140,9 @@ class FastRevBackProp(RevBackProp):
             with torch.cuda.stream(stream2):
                 # f{i} waits on f{i-1}
                 events[f"f{i}"].synchronize()
-                prev = next_layer.backward_pass_recover(Y_1=prev[0], Y_2=prev[1])
+                prev = next_layer.backward_pass_recover(
+                    Y_1=prev[0], Y_2=prev[1]
+                )
                 events[f"f{i+1}"].record(stream2)
 
         # Last iteration
@@ -142,7 +151,7 @@ class FastRevBackProp(RevBackProp):
         else:
             stream2 = s2
         next_layer = layers[0]
-            
+
         with torch.cuda.stream(stream2):
             events[f"b{len(layers)-2}"].synchronize()
             if len(layers) - 1 % 2 == 0:
@@ -164,16 +173,16 @@ class FastRevBackProp(RevBackProp):
 
 class FineReversibleBlock(ReversibleBlock):
     """
-    Reversible Block with fine-grained backwards functions. 
+    Reversible Block with fine-grained backwards functions.
     Specifically, backward is now two functions:
         (1) backward_pass_recover: which recomputes the activations
-        (2) backward_pass_grads: which updates the gradients  
-    See PaReprop paper for more details. 
+        (2) backward_pass_grads: which updates the gradients
+    See PaReprop paper for more details.
     """
 
     def backward_pass_recover(self, Y_1, Y_2):
         """
-        Activation recomputation for recovering activations only. 
+        Activation recomputation for recovering activations only.
         """
         with torch.enable_grad():
             Y_1.requires_grad = True
@@ -195,7 +204,7 @@ class FineReversibleBlock(ReversibleBlock):
 
     def backward_pass_grads(self, X_1, X_2, Y_1, g_Y_1, f_X_2, dY_1, dY_2):
         """
-        Receive intermediate activations and inputs to backprop through 
+        Receive intermediate activations and inputs to backprop through
         and update gradients.
         """
 
@@ -215,4 +224,3 @@ class FineReversibleBlock(ReversibleBlock):
             X_2.detach()
 
         return dY_1, dY_2
-
