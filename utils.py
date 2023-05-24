@@ -1,5 +1,6 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -32,8 +33,14 @@ def window_partition(x, window_size):
         x = F.pad(x, (0, 0, 0, pad_w, 0, pad_h))
     Hp, Wp = H + pad_h, W + pad_w
 
-    x = x.view(B, Hp // window_size, window_size, Wp // window_size, window_size, C)
-    windows = x.permute(0, 1, 3, 2, 4, 5).contiguous().view(-1, window_size, window_size, C)
+    x = x.view(
+        B, Hp // window_size, window_size, Wp // window_size, window_size, C
+    )
+    windows = (
+        x.permute(0, 1, 3, 2, 4, 5)
+        .contiguous()
+        .view(-1, window_size, window_size, C)
+    )
     return windows, (Hp, Wp)
 
 
@@ -52,7 +59,9 @@ def window_unpartition(windows, window_size, pad_hw, hw):
     Hp, Wp = pad_hw
     H, W = hw
     B = windows.shape[0] // (Hp * Wp // window_size // window_size)
-    x = windows.view(B, Hp // window_size, Wp // window_size, window_size, window_size, -1)
+    x = windows.view(
+        B, Hp // window_size, Wp // window_size, window_size, window_size, -1
+    )
     x = x.permute(0, 1, 3, 2, 4, 5).contiguous().view(B, Hp, Wp, -1)
 
     if Hp > H or Wp > W:
@@ -81,14 +90,18 @@ def get_rel_pos(q_size, k_size, rel_pos):
             size=max_rel_dist,
             mode="linear",
         )
-        rel_pos_resized = rel_pos_resized.reshape(-1, max_rel_dist).permute(1, 0)
+        rel_pos_resized = rel_pos_resized.reshape(-1, max_rel_dist).permute(
+            1, 0
+        )
     else:
         rel_pos_resized = rel_pos
 
     # Scale the coords with short length if shapes for q and k are different.
     q_coords = torch.arange(q_size)[:, None] * max(k_size / q_size, 1.0)
     k_coords = torch.arange(k_size)[None, :] * max(q_size / k_size, 1.0)
-    relative_coords = (q_coords - k_coords) + (k_size - 1) * max(q_size / k_size, 1.0)
+    relative_coords = (q_coords - k_coords) + (k_size - 1) * max(
+        q_size / k_size, 1.0
+    )
 
     return rel_pos_resized[relative_coords.long()]
 
@@ -119,7 +132,9 @@ def add_decomposed_rel_pos(attn, q, rel_pos_h, rel_pos_w, q_size, k_size):
     rel_w = torch.einsum("bhwc,wkc->bhwk", r_q, Rw)
 
     attn = (
-        attn.view(B, q_h, q_w, k_h, k_w) + rel_h[:, :, :, :, None] + rel_w[:, :, :, None, :]
+        attn.view(B, q_h, q_w, k_h, k_w)
+        + rel_h[:, :, :, :, None]
+        + rel_w[:, :, :, None, :]
     ).view(B, q_h * q_w, k_h * k_w)
 
     return attn
@@ -163,7 +178,12 @@ class PatchEmbed(nn.Module):
     """
 
     def __init__(
-        self, kernel_size=(16, 16), stride=(16, 16), padding=(0, 0), in_chans=3, embed_dim=768
+        self,
+        kernel_size=(16, 16),
+        stride=(16, 16),
+        padding=(0, 0),
+        in_chans=3,
+        embed_dim=768,
     ):
         """
         Args:
@@ -176,7 +196,11 @@ class PatchEmbed(nn.Module):
         super().__init__()
 
         self.proj = nn.Conv2d(
-            in_chans, embed_dim, kernel_size=kernel_size, stride=stride, padding=padding
+            in_chans,
+            embed_dim,
+            kernel_size=kernel_size,
+            stride=stride,
+            padding=padding,
         )
 
     def forward(self, x):
