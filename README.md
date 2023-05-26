@@ -13,7 +13,7 @@ The entire Reversible Vision Transformer is implemented from scratch in under **
 
 💥 A gentle and in-depth [15 minute introduction](https://youtu.be/X_xyt26tkRY?t=3350) to RevViT.  
 
-💥 Additional implementations of reversible MViT and Swin which are more in-depth and mature.
+💥 Additional implementations of reversible MViT and Swin for examples of hierarchical transformers.
 
 💥 A new implementation of fast, parallelized reversible backpropagation (PaReprop) featured as a spotlight at [Transformers for Vision @ CVPR 2023](https://sites.google.com/view/t4v-cvpr23). 
 
@@ -41,42 +41,45 @@ The code organization is also minimal 💫:
     -  The vanilla backpropagation 
     -  The memory-efficient reversible backpropagation    
 - `main.py` that has the driver code for training on CIFAR-10. By default, `--model vit` is enabled.
-
-There are additional bells and whistles for slightly more mature applications:
 - `fast_rev.py` contains a simplified implementation of fast, parallelized reversible backpropagation (PaReprop). Use `--pareprop True` to enable. 
 - `rev_swin.py` contains the reversible Swin Transformer with PaReprop functionality. Use `--model swin` to enable.
 - `rev_mvit.py` and `utils.py` contain the reversible MViTv2 with PaReprop functionality. Use `--model mvit` to enable. 
 
-<h2> Running CIFAR-10 </h2>
+## Running CIFAR-10
 
-### Reversible ViT Training
+We currently provide three model options for reversible training: ViT, Swin, and MViT. 
+The architectures in some cases have been simplified to run on CIFAR-10.
 
-`python main.py --lr 1e-3 --bs 128 --embed_dim 128 --depth 6 --n_head 8 --epochs 100`
+### Reversible ViT 🍦
 
-This will achieve `80%+` validation accuracy on CIFAR-10 from scratch training! 
+`python main.py --lr 1e-3 --bs 128 --embed_dim 128 --depth 6 --n_head 8 --epochs 100 --model vit`
+
+By default, the `--model` flag is set to `vit`. This will achieve `80%+` validation accuracy on CIFAR-10 from scratch training! 
 
 Here are the [Training/Validation Logs](https://api.wandb.ai/links/action_anticipation/d0hqnv67) 💯 
 
-`python main.py --lr 1e-3 --bs 128 --embed_dim 128 --depth 6 --n_head 8 --epochs 100 --vanilla_bp True`
+`python main.py --lr 1e-3 --bs 128 --embed_dim 128 --depth 6 --n_head 8 --epochs 100 --model vit --vanilla_bp True`
 
 Will train the same network but without memory-efficient backpropagation to the same accuracy as above.
 Hence, there is no accuracy drop from the memory-efficient reversible backpropagation.  
 
 Here are the [Training/Validation Logs](https://api.wandb.ai/links/action_anticipation/r7k0v3kd) 💯 
 
-### Reversible Swin and MViT Training
+### Reversible Swin 🐬
 
-`python main.py --lr 1e-3 --bs 128 --embed_dim 128  --epochs 100 --model swin`
+`python main.py --lr 1e-3 --bs 128 --embed_dim 128 --depth 4 --n_head 4 --epochs 100 --model swin`
 
 This will achieve `80%+` validation accuracy on CIFAR-10 from scratch training for a Reversible Swin!
 
-`python main.py --lr 1e-3 --bs 128 --epochs 100 --model mvit`
+### Reversible MViT 🏰
+
+`python main.py --lr 1e-3 --bs 128 --embed_dim 64 --depth 4 --n_head 1 --epochs 100 --model mvit`
 
 This will achieve `90%+` validation accuracy on CIFAR-10 from scratch training for a Reversible MViT!
 
-You can find Training/Validation Logs [here](https://api.wandb.ai/links/tyleryzhu/rt2amae6) for both models 💯 
+You can find Training/Validation Logs for both Swin and MViT [here](https://api.wandb.ai/links/tyleryzhu/rt2amae6) 💯 
 
-👁️ **Note**: The relatively low accuracy is due to difficulty in training vision transformer (reversible or vanilla) from scratch on small datasets like CIFAR-10. Also likely is that6 a much higher accuracy can be achieved with the same code, using a better [chosen model design and optimization parameters](https://github.com/tysam-code/hlb-CIFAR10). The authors have done no tuning since this repository is meant for understanding code, not pushing performance. 
+👁️ **Note**: The relatively low accuracy is due to difficulty in training vision transformer (reversible or vanilla) from scratch on small datasets like CIFAR-10. Also likely is that a much higher accuracy can be achieved with the same code, using a better [chosen model design and optimization parameters](https://github.com/tysam-code/hlb-CIFAR10). The authors have done no tuning since this repository is meant for understanding code, not pushing performance. 
 
 <h2> Mixed precision training </h2>
 

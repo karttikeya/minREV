@@ -1,9 +1,6 @@
 import torch
 from torch import nn
 
-# Needed to implement custom backward pass
-from torch.autograd import Function as Function
-
 # Inherit mostly from base RevViT
 from rev import RevBackProp, ReversibleBlock, RevViT
 
@@ -15,7 +12,7 @@ class FastRevViT(RevViT):
         # For Fast parallel revprop
         # Initialize global streams on current device
         global s1, s2
-        s1 = torch.cuda.default_stream(device=torch.cuda.current_device()) 
+        s1 = torch.cuda.default_stream(device=torch.cuda.current_device())
         s2 = torch.cuda.Stream(device=torch.cuda.current_device())
 
         # Then override the reversible blocks with finer functions

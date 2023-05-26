@@ -205,6 +205,7 @@ class MultiScaleBlock(nn.Module):
         use_rel_pos=False,
         rel_pos_zero_init=True,
         input_size=None,
+        enable_amp=False,
     ):
         """
         Args:
@@ -225,6 +226,7 @@ class MultiScaleBlock(nn.Module):
             use_rel_pos (bool): If True, add relative postional embeddings to the attention map.
             rel_pos_zero_init (bool): If True, zero initialize relative positional parameters.
             input_size (int or None): Input resolution.
+            enable_amp (bool): If True, enable mixed precision training.
         """
         super().__init__()
         self.norm1 = norm_layer(dim)
@@ -254,6 +256,7 @@ class MultiScaleBlock(nn.Module):
             out_features=dim_out,
             act_layer=act_layer,
         )
+        self.enable_amp = enable_amp
 
         # For Stage-Transition
         if dim != dim_out:
@@ -267,16 +270,17 @@ class MultiScaleBlock(nn.Module):
             )
 
     def forward(self, x):
-        x_norm = self.norm1(x)
-        x_block = self.attn(x_norm)
+        with torch.cuda.amp.autocast(enabled=self.enable_amp):
+            x_norm = self.norm1(x)
+            x_block = self.attn(x_norm)
 
-        if hasattr(self, "proj"):
-            x = self.proj(x_norm)
-        if hasattr(self, "pool_skip"):
-            x = attention_pool(x, self.pool_skip)
+            if hasattr(self, "proj"):
+                x = self.proj(x_norm)
+            if hasattr(self, "pool_skip"):
+                x = attention_pool(x, self.pool_skip)
 
-        x = x + self.drop_path(x_block)
-        x = x + self.drop_path(self.mlp(self.norm2(x)))
+            x = x + self.drop_path(x_block)
+            x = x + self.drop_path(self.mlp(self.norm2(x)))
 
         return x
 
@@ -302,6 +306,7 @@ class ReversibleMultiScaleBlock(nn.Module):
         use_rel_pos=False,
         rel_pos_zero_init=True,
         input_size=None,
+        enable_amp=False,
     ):
         """
         Args:
@@ -322,6 +327,7 @@ class ReversibleMultiScaleBlock(nn.Module):
             use_rel_pos (bool): If True, add relative postional embeddings to the attention map.
             rel_pos_zero_init (bool): If True, zero initialize relative positional parameters.
             input_size (int or None): Input resolution.
+            enable_amp (bool): If True, enable mixed precision training.
         """
         super().__init__()
         self.norm1 = norm_layer(dim)
@@ -351,6 +357,7 @@ class ReversibleMultiScaleBlock(nn.Module):
             out_features=dim_out,
             act_layer=act_layer,
         )
+        self.enable_amp = enable_amp
 
         self.seeds = {}
 
@@ -386,12 +393,14 @@ class ReversibleMultiScaleBlock(nn.Module):
 
     def F(self, x):
         """Attention forward pass"""
-        x_out = self.attn(self.norm1(x))
+        with torch.cuda.amp.autocast(enabled=self.enable_amp):
+            x_out = self.attn(self.norm1(x))
         return x_out
 
     def G(self, x):
         """MLP forward pass"""
-        x_out = self.mlp(self.norm2(x))
+        with torch.cuda.amp.autocast(enabled=self.enable_amp):
+            x_out = self.mlp(self.norm2(x))
         return x_out
 
     def forward(self, X_1, X_2):
@@ -556,6 +565,7 @@ class ReversibleMViT(nn.Module):
         use_rel_pos=True,
         rel_pos_zero_init=True,
         fast_backprop=False,
+        enable_amp=False,
     ):
         """
         Args:
@@ -582,6 +592,7 @@ class ReversibleMViT(nn.Module):
             rel_pos_zero_init (bool): If True, zero initialize relative positional parameters.
             window_size (int): Window size for window attention blocks.
             fast_backprop (bool): If True, use fast backprop, i.e. PaReprop.
+            enable_amp (bool): If True, enable automatic mixed precision.
         """
         super().__init__()
         self.patch_embed = PatchEmbed(
@@ -647,6 +658,7 @@ class ReversibleMViT(nn.Module):
                 use_rel_pos=use_rel_pos,
                 rel_pos_zero_init=rel_pos_zero_init,
                 input_size=input_size,
+                enable_amp=enable_amp,
             )
             self.blocks.append(block)
 

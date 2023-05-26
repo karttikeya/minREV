@@ -203,6 +203,7 @@ class ReversibleSwinTransformerBlock(nn.Module):
         drop_path (float, optional): Stochastic depth rate. Default: 0.0
         act_layer (nn.Module, optional): Activation layer. Default: nn.GELU
         norm_layer (nn.Module, optional): Normalization layer.  Default: nn.LayerNorm
+        enable_amp (bool, optional): Enable mixed precision.  Default: False.
     """
 
     def __init__(
@@ -219,6 +220,7 @@ class ReversibleSwinTransformerBlock(nn.Module):
         drop_path=0.0,
         act_layer=nn.GELU,
         norm_layer=nn.LayerNorm,
+        enable_amp=False,
     ):
         super().__init__()
         self.dim = dim
@@ -252,6 +254,7 @@ class ReversibleSwinTransformerBlock(nn.Module):
             drop=drop,
         )
 
+        self.enable_amp = enable_amp
         self.H = None
         self.W = None
 
@@ -294,64 +297,65 @@ class ReversibleSwinTransformerBlock(nn.Module):
         H, W = self.H, self.W
         assert L == H * W, "input feature has wrong size"
 
-        x = self.norm1(x)
-        x = x.view(B, H, W, C)
+        with torch.cuda.amp.autocast(enabled=self.enable_amp):
+            x = self.norm1(x)
+            x = x.view(B, H, W, C)
 
-        # pad feature maps to multiples of window size
-        pad_l = pad_t = 0
-        pad_r = (self.window_size - W % self.window_size) % self.window_size
-        pad_b = (self.window_size - H % self.window_size) % self.window_size
-        x = F.pad(x, (0, 0, pad_l, pad_r, pad_t, pad_b))
-        _, Hp, Wp, _ = x.shape
+            # pad feature maps to multiples of window size
+            pad_l = pad_t = 0
+            pad_r = (self.window_size - W % self.window_size) % self.window_size
+            pad_b = (self.window_size - H % self.window_size) % self.window_size
+            x = F.pad(x, (0, 0, pad_l, pad_r, pad_t, pad_b))
+            _, Hp, Wp, _ = x.shape
 
-        # cyclic shift
-        if self.shift_size > 0:
-            attn_mask = mask_matrix
-            shifted_x = torch.roll(
-                x, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2)
+            # cyclic shift
+            if self.shift_size > 0:
+                attn_mask = mask_matrix
+                shifted_x = torch.roll(
+                    x, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2)
+                )
+                # partition windows
+                x_windows = window_partition(
+                    shifted_x, self.window_size
+                )  # nW*B, window_size, window_size, C
+            else:
+                attn_mask = None
+                shifted_x = x
+                # partition windows
+                x_windows = window_partition(
+                    shifted_x, self.window_size
+                )  # nW*B, window_size, window_size, C
+
+            x_windows = x_windows.view(
+                -1, self.window_size * self.window_size, C
+            )  # nW*B, window_size*window_size, C
+
+            # W-MSA/SW-MSA
+            # nW*B, window_size*window_size, C
+            attn_windows = self.attn(x_windows, mask=attn_mask)
+
+            # merge windows
+            attn_windows = attn_windows.view(
+                -1, self.window_size, self.window_size, C
             )
-            # partition windows
-            x_windows = window_partition(
-                shifted_x, self.window_size
-            )  # nW*B, window_size, window_size, C
-        else:
-            attn_mask = None
-            shifted_x = x
-            # partition windows
-            x_windows = window_partition(
-                shifted_x, self.window_size
-            )  # nW*B, window_size, window_size, C
-
-        x_windows = x_windows.view(
-            -1, self.window_size * self.window_size, C
-        )  # nW*B, window_size*window_size, C
-
-        # W-MSA/SW-MSA
-        # nW*B, window_size*window_size, C
-        attn_windows = self.attn(x_windows, mask=attn_mask)
-
-        # merge windows
-        attn_windows = attn_windows.view(
-            -1, self.window_size, self.window_size, C
-        )
-        shifted_x = window_reverse(
-            attn_windows, self.window_size, Hp, Wp
-        )  # B H' W' C
-
-        # reverse cyclic shift
-        if self.shift_size > 0:
             shifted_x = window_reverse(
-                attn_windows, self.window_size, H, W
+                attn_windows, self.window_size, Hp, Wp
             )  # B H' W' C
-            x = torch.roll(
-                shifted_x,
-                shifts=(self.shift_size, self.shift_size),
-                dims=(1, 2),
-            )
-        else:
-            shifted_x = window_reverse(
-                attn_windows, self.window_size, H, W
-            )  # B H' W' C
+
+            # reverse cyclic shift
+            if self.shift_size > 0:
+                shifted_x = window_reverse(
+                    attn_windows, self.window_size, H, W
+                )  # B H' W' C
+                x = torch.roll(
+                    shifted_x,
+                    shifts=(self.shift_size, self.shift_size),
+                    dims=(1, 2),
+                )
+            else:
+                shifted_x = window_reverse(
+                    attn_windows, self.window_size, H, W
+                )  # B H' W' C
             x = shifted_x
 
         if pad_r > 0 or pad_b > 0:
@@ -363,7 +367,9 @@ class ReversibleSwinTransformerBlock(nn.Module):
 
     def G(self, x):
         """Forward function for mlp."""
-        return self.mlp(self.norm2(x))
+        with torch.cuda.amp.autocast(enabled=self.enable_amp):
+            x_out = self.mlp(self.norm2(x))
+        return x_out
 
     def forward(self, X1, X2, mask_matrix):
         """Reversible forward function with rewiring.
@@ -720,6 +726,7 @@ class ReversibleLayer(nn.Module):
         norm_layer (nn.Module, optional): Normalization layer. Default: nn.LayerNorm
         downsample (nn.Module | None, optional): Downsample layer at the end of the layer. Default: None
         fast_backprop (bool, optional): Whether to use fast reversible backprop, i.e. PaReprop. Default: False
+        enable_amp (bool, optional): Enable mixed precision. Default: False
     """
 
     def __init__(
@@ -737,6 +744,7 @@ class ReversibleLayer(nn.Module):
         norm_layer=nn.LayerNorm,
         downsample=None,
         fast_backprop=False,
+        enable_amp=False,
     ):
         super().__init__()
         self.window_size = window_size
@@ -760,6 +768,7 @@ class ReversibleLayer(nn.Module):
                     if isinstance(drop_path, list)
                     else drop_path,
                     norm_layer=norm_layer,
+                    enable_amp=enable_amp,
                 )
                 for i in range(depth)
             ]
@@ -1011,6 +1020,7 @@ class ReversibleSwinTransformer(nn.Module):
                 if (i_layer < self.num_layers - 1)
                 else None,
                 fast_backprop=fast_backprop,
+                enable_amp=enable_amp,
             )
             self.layers.append(layer)
 

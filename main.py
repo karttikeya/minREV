@@ -132,13 +132,13 @@ if args.model == "vit":
 elif args.model == "swin":
     model = RevSwin(
         img_size=args.image_size,
-        patch_size=(4,4),
+        patch_size=args.patch_size,
         num_classes=args.num_classes,
         embed_dim=args.embed_dim,
-        depths=[2,2],
-        num_heads=[4,8],
+        depths=[args.depth // 2, args.depth // 2],
+        num_heads=[args.n_head, args.n_head * 2],
         window_size=4,
-        fast_backprop=args.pareprop
+        fast_backprop=args.pareprop,
     )
 elif args.model == "mvit":
     model = RevMViT(
@@ -147,9 +147,9 @@ elif args.model == "mvit":
         patch_stride=(2, 2),
         patch_padding=(1, 1),
         num_classes=args.num_classes,
-        embed_dim=64,
-        depth=4,
-        num_heads=1,
+        embed_dim=args.embed_dim,
+        depth=args.depth,
+        num_heads=args.n_head,  # doubles every stage
         last_block_indexes=[0, 2],
         qkv_pool_kernel=(3, 3),
         adaptive_kv_stride=2,
