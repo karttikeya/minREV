@@ -15,7 +15,7 @@ The entire Reversible Vision Transformer is implemented from scratch in under **
 
 💥 Additional implementations of reversible MViT and Swin for examples of hierarchical transformers.
 
-💥 A new implementation of fast, parallelized reversible backpropagation (PaReprop) featured as a spotlight at [Transformers for Vision @ CVPR 2023](https://sites.google.com/view/t4v-cvpr23). 
+💥 New implementations of [fast, parallelized reversible backpropagation (PaReprop)](https://tylerzhu.com/pareprop/), featured as a spotlight at the workshop on [Transformers for Vision @ CVPR 2023](https://sites.google.com/view/t4v-cvpr23). 
 
 <h2> Setting Up </h2>
 
